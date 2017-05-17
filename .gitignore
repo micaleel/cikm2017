@@ -92,3 +92,15 @@ ENV/
 .idea/
 
 .idea/vcs.xml
+
+*.h5
+
+*.csv
+
+*.pdf
+
+*.png
+
+cikm/scratch.py
+
+cikm/scratch.py

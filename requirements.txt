@@ -1,3 +1,4 @@
+simplejson
 lightfm
 appnope==0.1.0
 bleach==2.0.0

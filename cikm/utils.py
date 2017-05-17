@@ -3,6 +3,8 @@ import sys
 import numpy as np
 from logbook import Logger, StreamHandler
 
+import cikm
+
 
 class Singleton(type):
     def __init__(cls, name, bases, dict):
@@ -136,3 +138,12 @@ def get_logger(format_string=None):
 
 class LoggerSingle(Logger):
     __metaclass__ = Singleton
+
+
+def compute_and_plot_ndcg(df_explanations, min_session_size=10, title=None):
+    title = title or "NDCG"
+    df_ndcg = cikm.compute_ndcg(df_explanations, min_session_size=min_session_size)
+    df_ndcg_summary = cikm.summarize_ndcg(df_ndcg)
+
+    # TODO: Save df_ndcg and df_ndcg_summary to disk.
+    cikm.plot_ndcg(df_ndcg_summary, title=title)
