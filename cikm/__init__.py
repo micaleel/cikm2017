@@ -1,14 +1,12 @@
+import logging
 import os
 from itertools import cycle
 
 import numpy as np
 import pandas as pd
 import simplejson as json
-from lightfm import LightFM
 from matplotlib import pyplot as plt
 from scipy import sparse as sp
-
-import logging
 
 logging.basicConfig(format='%(levelname)s:%(message)s', level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -49,20 +47,6 @@ def add_scores_to_explanations(df_explanations, df_scores):
     df_explanations.rename(columns={'score': 'rank_mf'}, inplace=True)
     del df_explanations['user_id_target_item_id']
     del df_scores['user_id_target_item_id']
-    return df_explanations
-
-
-def fit(df_explanations, loss='warp', epochs=30, num_threads=4):
-    """Learn rankings using Matrix Factorization."""
-    df_ratings = ratings_from_explanations(df_explanations)
-    user_ids, item_ids, matrix = build_interaction_matrix(df=df_ratings)
-
-    # model = LightFM(loss=loss)
-    model = LightFM()
-    model.fit(matrix, epochs=epochs, num_threads=num_threads)
-
-    df_scores = get_scores(df_explanations, user_ids, item_ids, model)
-    df_explanations = add_scores_to_explanations(df_explanations, df_scores)
     return df_explanations
 
 

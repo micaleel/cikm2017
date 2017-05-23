@@ -5,6 +5,10 @@ from IPython.display import set_matplotlib_formats
 from matplotlib.ticker import FuncFormatter
 import matplotlib.patches as mpatches
 import os
+from itertools import cycle
+import matplotlib.pyplot as plt
+import pandas as pd
+import os
 
 set_matplotlib_formats('pdf', 'png')
 
@@ -33,7 +37,6 @@ def points_to_inches(points):
 
 
 def latexify(column_width_pt=243.91125, text_width_pt=505.89, scale=2, fontsize_pt=11, usetex=True):
-
     # sorted([f.name for f in mpl.matplotlib.font_manager.fontManager.ttflist])
 
     fig_width_pt = column_width_pt
@@ -100,6 +103,94 @@ def latexify(column_width_pt=243.91125, text_width_pt=505.89, scale=2, fontsize_
     plt.rcParams['ps.fonttype'] = 42
 
 
+def plot_avg_strengths_for_weight(weight, column_width_pt, explanations,
+                                  figures_dir,
+                                  title_fontsize=11, xlabel_fontsize=10,
+                                  legend_kwds=None, wspace=0.0,
+                                  markersize=5, dataset_names=None, lw=0.75):
+    """Plot average strength per rank."""
+    assert weight in ('uw', 'iw', 'nw')
+    legend_kwds = legend_kwds or dict(fontsize='x-small', borderpad=0.35)
+    dataset_names = dataset_names or {'ta': 'TripAdvisor', 'yp': 'Yelp',
+                                      'ba': 'BeerAdvocate'}
+    latexify(usetex=True, scale=1, column_width_pt=column_width_pt * 2)
+    figsize = (points_to_inches(column_width_pt * 2), 2.5)
+    fig, axes = plt.subplots(nrows=1, ncols=3, sharex=True, sharey=True,
+                             figsize=figsize)
+
+    axes = cycle(axes.flatten())
+    weight_markers = {'CS': '^', 'EX': 'o', 'MF': 's', 'AR': 'D'}
+    col_aliases = {'avg-strength-rank_related_items_sims_np': 'CS',
+                   'avg-strength-rank_strength': 'EX',
+                   'avg-strength-rank_biasedmf': 'MF',
+                   'avg-strength-rank_target_item_average_rating': 'AR'}
+
+    def calc_avg_strength_per_rank_iter(df=None):
+        for rank_col in rank_cols:
+            c_aliases = {rank_col: 'rank-pos',
+                         'strength': 'avg-strength-{}'.format(rank_col)}
+            df_g = (df.groupby(rank_col).strength.mean().reset_index()
+                    .rename(columns=c_aliases)
+                    .set_index('rank-pos'))
+            yield df_g
+
+    legend = True
+    for dataset in ('ta', 'yp', 'ba'):
+        dataset_id = '{d}_bw_{w}'.format(d=dataset, w=weight)
+        df = explanations[dataset_id]
+        ax = next(axes)
+        rank_cols = [c for c in df.columns if c.startswith('rank_')]
+
+        df_avg_strength_per_rank = pd.concat(
+            calc_avg_strength_per_rank_iter(df), axis=1)
+
+        df_avg_strength_per_rank.rename(columns=col_aliases, inplace=True)
+
+        for col in df_avg_strength_per_rank.columns:
+            df_avg_strength_per_rank[col].plot(kind='line', ms=markersize,
+                                               marker=weight_markers[col],
+                                               lw=lw, alpha=0.85,
+                                               markeredgewidth=lw,
+                                               ax=ax, legend=False)
+        # if legend:
+        #             ax.legend(scatterpoints=1, ncol=4, numpoints=1, columnspacing=0.5,
+        #                       loc='lower right', **legend_kwds)
+        #             legend=False
+
+        ax.set_xlabel('Rank $k$', fontsize=xlabel_fontsize)
+        ax.set_ylabel('Average Strength', fontsize=xlabel_fontsize)
+        ax.tick_params(axis='both', which='major', labelsize=xlabel_fontsize * 0.9)
+
+        ax.axhline(y=0, c='k', ls='-', lw=0.5)
+        title = '{}-{}'.format(dataset_names[dataset], weight.upper())
+        ax.set_title(title, fontsize=title_fontsize)
+
+        fmt = 'avg-strength-per-rank-{dataset}-{weight}.csv'
+        save_path = fmt.format(dataset=dataset, weight=weight)
+        df_avg_strength_per_rank.reset_index().to_csv(save_path, index=False)
+
+    # # plt.suptitle('Average Strength per Rank', fontsize='large')
+    plt.minorticks_off()
+
+    plt.legend(scatterpoints=1, ncol=4, numpoints=1, columnspacing=0.5,
+               loc='upper right', **legend_kwds)
+    plt.locator_params(axis='x', nbins=10)
+    plt.locator_params(axis='y', thight=True, nbins=8)
+    plt.subplots_adjust(
+        #         top=0.92,
+        wspace=wspace, hspace=0)
+    plt.tight_layout()
+
+    # Save
+    pad_inches = 0.055
+    pdf_path = os.path.join(figures_dir,
+                            'avg-strength-per-rank-{w}.pdf'.format(w=weight))
+    png_path = os.path.join(figures_dir,
+                            'avg-strength-per-rank-{w}.png'.format(w=weight))
+    plt.savefig(pdf_path, bbox_inches='tight', pad_inches=pad_inches)
+    plt.savefig(png_path, bbox_inches='tight', dpi=700, pad_inches=pad_inches)
+
+
 def plot_pros_and_cons(df=None,
                        ax=None,
                        bw_min=0,
@@ -107,7 +198,6 @@ def plot_pros_and_cons(df=None,
                        rank_col=None,
                        frameon=False,
                        lw=0.5,
-                       fname_suffix='',
                        ylabel='\# Features',
                        xlabel=None,
                        markersize=5,
@@ -118,59 +208,35 @@ def plot_pros_and_cons(df=None,
                        is_compelling=False,
                        title_fontsize='small',
                        rotation=0,
-                       fname_prefix='',
+                       file_prefix='',
                        markeredgewidth=0.5,
                        tick_length=1.0,
                        tick_width=0.5,
                        out_dir=None,
                        show_xticklabels=True,
                        minor_ylabel: bool = True,
-                       major_ylabel: bool = True):
-    """
-
-    :param df:
-    :param bw_min:
-    :param bw_max:
-    :param rank_col:
-    :param frameon:
-    :param lw:
-    :param fname_suffix:
-    :param ylabel:
-    :param xlabel:
-    :param markersize:
-    :param pros_min:
-    :param pros_max:
-    :param title:
-    :param is_compelling:
-    :param title_fontsize:
-    :param rotation:
-    :param fname_prefix:
-    :param markeredgewidth:
-    :param out_dir:
-    :param minor_ylabel: Whether or not the minor ylabel should be shown
-    :param major_ylabel: Whether or not the major ylabel should be shown
-    :return:
-    """
+                       major_ylabel: bool = True, legend_kwds=None, savefig_kwds=None):
     if is_compelling:
         cols = ['n_pros_comp', 'n_cons_comp', 'better_avg_comp', 'worse_avg_comp']
     else:
         cols = ['n_pros', 'n_cons', 'better_avg', 'worse_avg']
 
-    aggs = {col: np.mean for col in cols}
-    rank_col = rank_col if rank_col else 'rank_target_item_average_rating'
+    rank_col = rank_col or 'rank_target_item_average_rating'
     df[rank_col] = df[rank_col].astype(int)
 
-    grouped_ranks = df.groupby(rank_col).agg(aggs)
+    grouped_ranks = df.groupby(rank_col).agg({col: np.mean for col in cols})
 
     params = dict(edgecolor='black', legend=False, lw=lw)
     if is_compelling:
         grouped_ranks.n_cons_comp = -grouped_ranks.n_cons_comp
         ax = grouped_ranks[['n_pros_comp']].plot(kind='bar', ax=ax, color='whitesmoke', rot=rotation, **params)
+        # grouped_ranks[['n_pros_comp']].plot(kind='bar', ax=ax, color='whitesmoke', rot=rotation, **params)
         grouped_ranks[['n_cons_comp']].plot(kind='bar', ax=ax, color='dimgray', **params)
         bw_cols = ['better_avg_comp', 'worse_avg_comp']
     else:
         grouped_ranks.n_cons = -grouped_ranks.n_cons
         ax = grouped_ranks[['n_pros']].plot(kind='bar', ax=ax, color='whitesmoke', rot=rotation, **params)
+        # grouped_ranks[['n_pros']].plot(kind='bar', ax=ax, color='whitesmoke', rot=rotation, **params)
         grouped_ranks[['n_cons']].plot(kind='bar', ax=ax, color='dimgray', rot=rotation, **params)
         bw_cols = ['better_avg', 'worse_avg']
 
@@ -202,9 +268,8 @@ def plot_pros_and_cons(df=None,
     if minor_ylabel:
         ax2.set_ylabel('\% Better/Worse')
     else:
-        print('Removing minor ylabels')
         n_labels = len(ax2.get_yticklabels())
-        ax2.set_ylabel([1]*n_labels)
+        ax2.set_ylabel([1] * n_labels)
         # ax2.yaxis.label.set_visible(False)
 
     # create patches for legend
@@ -213,10 +278,10 @@ def plot_pros_and_cons(df=None,
 
     ax2_handles, ax2_labels = ax2.get_legend_handles_labels()
 
+    legend_kwds = legend_kwds or dict(fontsize='x-small', borderpad=0)
     legend = ax.legend(handles=[cons_patch, pros_patch, ax2_handles[1], ax2_handles[0]],
                        scatterpoints=1, ncol=4, numpoints=1, loc='lower left', frameon=frameon,
-                       columnspacing=0.5, fontsize='x-small',
-                       # borderpad=0.0,
+                       columnspacing=0.5, **legend_kwds
                        )
     legend.get_frame().set_linewidth(lw)
 
@@ -243,12 +308,132 @@ def plot_pros_and_cons(df=None,
 
     plt.tight_layout()
     if out_dir:
-        fname_suffix = fname_suffix if fname_suffix else rank_col.replace('_', '-')
-        fname_tmpl = '{fname_prefix}pcbw-per-rank-{file_suffix}{fname_suffix}'
-        path = os.path.join(out_dir, fname_tmpl.format(fname_prefix=fname_prefix,
-                                                       file_suffix=file_suffix,
-                                                       fname_suffix=fname_suffix))
-        #         plt.savefig('{}.png'.format(path), bbox_inches='tight')
-        plt.savefig('{}.pdf'.format(path), bbox_inches='tight')
-        plt.savefig('{}.png'.format(path), bbox_inches='tight')
+        fmt = '{file_prefix}-pros-cons-{file_suffix}'
+        filename = fmt.format(file_prefix=file_prefix, file_suffix=file_suffix)
+        path = os.path.join(out_dir, filename).lower()
+        savefig_kwds = savefig_kwds or dict(bbox_inches='tight', transparent=False)
+        plt.savefig('{}.pdf'.format(path), **savefig_kwds)
     return
+
+
+def plot_dataset_ndcg(df_ndcgs_all, dataset, markersize=5.5,
+                      title_fontsize=11, xlabel_fontsize=10,
+                      ylim=None, ylabel=None,
+                      xlabel=None, ax=None, out_dir=None, title=None,
+                      legend_kwds=None, wspace=0.08, rank_cols=None):
+    """Plot all NDCGs of a given dataset.
+
+    Args:
+        df_ndcgs_all: DataFrame of all NDCGs
+        dataset: Short name of the dataset to plot
+        out_dir: where to save the figure.
+    """
+    # Define columns that'll be included in plot.
+    if rank_cols is None:
+        rank_cols = {'rank_related_items_sims_np': 'CS',
+                     'rank_strength': 'EX',
+                     'rank_target_item_average_rating': 'AR',
+                     'rank_biasedmf': 'MF'}
+
+    plot_cols = ('rank_related_items_sims_np', 'rank_strength',
+                 'rank_biasedmf')
+    markers = cycle(['D', '^', 'o', 'v', '+', 'v'])
+    linestyles = cycle([':', '--', '-', '-.'])
+    markerfacecolors = cycle(['r', 'b', 'g', 'y'])
+
+    if not ax:
+        fig, ax = plt.subplots()
+
+    for rank_col in plot_cols:
+        marker = next(markers)
+        linestyle = next(linestyles)
+        markerfacecolor = next(markerfacecolors)
+
+        d = dataset.lower()
+        assert len(d) > 0
+        df = df_ndcgs_all.query('col == @rank_col and dataset == @d').copy()
+        assert len(df) > 0
+
+        df.set_index('k').rename(columns={'ndcg': rank_cols[rank_col]}).plot(
+            kind='line',
+            marker=marker,
+            markersize=markersize,
+            ax=ax,
+            linewidth=1,
+            alpha=0.85,
+            label=rank_col,
+            color='black',
+            linestyle=linestyle,
+            markerfacecolor=markerfacecolor,
+            markeredgewidth=0.5,
+            legend=False
+        )
+
+    ax.set_xticks([x + 1 for x in range(len(df))])
+    ax.locator_params(axis='y', nticks=10)
+    ax.tick_params(axis='both', which='major', labelsize=xlabel_fontsize * 0.9)
+
+    if title:
+        ax.set_title(title, fontsize=title_fontsize)
+
+    if xlabel:
+        ax.set_xlabel(xlabel, fontsize=xlabel_fontsize)
+        ax.set_xlabel(xlabel)
+
+    if ylabel:
+        ax.set_ylabel(ylabel, labelpad=0, fontsize=xlabel_fontsize)
+    else:
+        ax.set_ylabel(None)
+
+    if ylim:
+        ax.set_ylim(ylim)
+    legend_kwds = legend_kwds or dict(fontsize='x-small', borderpad=0)
+    plt.legend(scatterpoints=1,
+               ncol=4,
+               numpoints=1,
+               columnspacing=0.5,
+               loc='best',
+               **legend_kwds)
+    return
+
+
+def plot_ndcgs_all(df_ndcgs_all, col_width_pts, figures_dir,
+                   dataset_lookup=None, figsize=None, wspace=0.08):
+    """Plot NDCGs for all datasets."""
+    if dataset_lookup is None:
+        dataset_lookup = {'ba': 'BeerAdvocate',
+                          'ta': 'TripAdvisor',
+                          'yp': 'Yelp'}
+
+    latexify(usetex=True, scale=1, column_width_pt=col_width_pts)
+    figsize = figsize or (points_to_inches(col_width_pts), 3)
+
+    _, axes = plt.subplots(ncols=3, sharey=True, figsize=figsize)
+    axes = axes.flatten()
+
+    for dataset, ax in zip(['ta_nw', 'yp_nw', 'ba_nw'], axes):
+        legend_kwds = dict(fontsize=10.5, frameon=True, borderpad=0.3)
+        plot_dataset_ndcg(df_ndcgs_all=df_ndcgs_all, dataset=dataset,
+                          ylim=(0.65, 1),
+                          title_fontsize=14,
+                          ax=ax,
+                          out_dir=figures_dir,
+                          xlabel='Rank $k$',
+                          ylabel='$nDCG_k$',
+                          legend_kwds=legend_kwds,
+                          title=dataset_lookup[dataset.split('_')[0]])
+        continue
+    # plt.set_ylabel('$nDCG_k$')
+    plt.tight_layout()
+    plt.locator_params(axis='y', nbins=8)
+    plt.subplots_adjust(top=0.95, wspace=wspace, hspace=0)
+
+    # Save
+    pad_inches = 0.055
+    pdf_path = os.path.join(figures_dir, 'ndcgs.pdf')
+    png_path = os.path.join(figures_dir, 'ndcgs.png')
+    plt.savefig(pdf_path, bbox_inches='tight', pad_inches=pad_inches)
+    plt.savefig(png_path, bbox_inches='tight', dpi=300, pad_inches=pad_inches)
+    #     break
+
+#     break
